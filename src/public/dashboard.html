@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de WhatsApp</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .chat-container {
+            height: calc(100vh - 120px);
+            display: flex;
+        }
+        
+        .contacts-list {
+            width: 300px;
+            border-right: 1px solid #dee2e6;
+            overflow-y: auto;
+        }
+        
+        .chat-messages {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .messages-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .message {
+            max-width: 70%;
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 10px;
+        }
+        
+        .message-incoming {
+            background-color: #f1f0f0;
+            align-self: flex-start;
+        }
+        
+        .message-outgoing {
+            background-color: #dcf8c6;
+            align-self: flex-end;
+        }
+        
+        .contact-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #dee2e6;
+            cursor: pointer;
+        }
+        
+        .contact-item:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .contact-item.active {
+            background-color: #e9ecef;
+        }
+        
+        .message-input {
+            padding: 20px;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        .timestamp {
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
+        
+        .no-chat-selected {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">Dashboard de WhatsApp</span>
+        </div>
+    </nav>
+
+    <div class="chat-container">
+        <!-- Lista de contactos -->
+        <div class="contacts-list" id="contactsList">
+            <!-- Los contactos se cargarán dinámicamente -->
+        </div>
+
+        <!-- Área de mensajes -->
+        <div class="chat-messages">
+            <div class="messages-container" id="messagesContainer">
+                <div class="no-chat-selected">
+                    <h4>Selecciona una conversación para ver los mensajes</h4>
+                </div>
+            </div>
+            
+            <!-- Input para enviar mensajes -->
+            <div class="message-input">
+                <form id="messageForm" class="d-none">
+                    <div class="input-group">
+                        <input type="text" id="messageInput" class="form-control" placeholder="Escribe un mensaje...">
+                        <button class="btn btn-primary" type="submit">Enviar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        let selectedPhone = null;
+        const contactsList = document.getElementById('contactsList');
+        const messagesContainer = document.getElementById('messagesContainer');
+        const messageForm = document.getElementById('messageForm');
+        const messageInput = document.getElementById('messageInput');
+
+        // Manejar mensajes nuevos desde WebSocket
+        socket.on('new_message', (data) => {
+            if (selectedPhone === data.phone_number) {
+                appendMessage(data);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+            updateContactsList();
+        });
+
+        // Cargar contactos al iniciar
+        async function loadContacts() {
+            try {
+                const response = await fetch('/api/contacts');
+                const contacts = await response.json();
+                
+                contactsList.innerHTML = '';
+                const uniqueContacts = [...new Set(contacts.map(c => c.phone_number))];
+                
+                uniqueContacts.forEach(phone => {
+                    const div = document.createElement('div');
+                    div.className = `contact-item ${selectedPhone === phone ? 'active' : ''}`;
+                    div.textContent = phone;
+                    div.onclick = () => selectContact(phone);
+                    contactsList.appendChild(div);
+                });
+            } catch (error) {
+                console.error('Error cargando contactos:', error);
+            }
+        }
+
+        // Seleccionar un contacto
+        async function selectContact(phone) {
+            selectedPhone = phone;
+            document.querySelectorAll('.contact-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.textContent === phone) {
+                    item.classList.add('active');
+                }
+            });
+
+            messageForm.classList.remove('d-none');
+            await loadMessages(phone);
+        }
+
+        // Cargar mensajes de un contacto
+        async function loadMessages(phone) {
+            try {
+                const response = await fetch(`/api/messages/${phone}`);
+                const messages = await response.json();
+                
+                messagesContainer.innerHTML = '';
+                messages.forEach(msg => appendMessage(msg));
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            } catch (error) {
+                console.error('Error cargando mensajes:', error);
+            }
+        }
+
+        // Agregar un mensaje al contenedor
+        function appendMessage(message) {
+            const div = document.createElement('div');
+            div.className = `message ${message.incoming_message ? 'message-incoming' : 'message-outgoing'}`;
+            
+            const content = message.incoming_message || message.response_message;
+            const time = new Date(message.timestamp).toLocaleTimeString();
+            
+            div.innerHTML = `
+                ${content}
+                <div class="timestamp">${time}</div>
+            `;
+            
+            messagesContainer.appendChild(div);
+        }
+
+        // Enviar mensaje
+        messageForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const message = messageInput.value.trim();
+            if (!message || !selectedPhone) return;
+
+            try {
+                const response = await fetch('/api/send-message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        phone_number: selectedPhone,
+                        message: message
+                    })
+                });
+
+                if (response.ok) {
+                    messageInput.value = '';
+                }
+            } catch (error) {
+                console.error('Error enviando mensaje:', error);
+            }
+        };
+
+        // Actualizar lista de contactos
+        function updateContactsList() {
+            loadContacts();
+        }
+
+        // Cargar contactos inicialmente
+        loadContacts();
+
+        // Actualizar cada minuto
+        setInterval(updateContactsList, 60000);
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 
