@@ -40,7 +40,13 @@ router.get('/contacts', async (req, res) => {
   try {
     const db = req.app.get('db');
     const contacts = await new Promise((resolve, reject) => {
-      db.all('SELECT DISTINCT phone_number FROM conversations ORDER BY timestamp DESC', (err, rows) => {
+      db.all(`
+        SELECT DISTINCT phone_number, 
+               MAX(timestamp) as last_message 
+        FROM conversations 
+        GROUP BY phone_number 
+        ORDER BY last_message DESC
+      `, (err, rows) => {
         if (err) reject(err);
         else resolve(rows);
       });
@@ -58,14 +64,15 @@ router.get('/messages/:phone', async (req, res) => {
     const { phone } = req.params;
     const db = req.app.get('db');
     const messages = await new Promise((resolve, reject) => {
-      db.all(
-        'SELECT * FROM conversations WHERE phone_number = ? ORDER BY timestamp ASC',
-        [phone],
-        (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows);
-        }
-      );
+      db.all(`
+        SELECT * 
+        FROM conversations 
+        WHERE phone_number = ? 
+        ORDER BY timestamp ASC
+      `, [phone], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
     });
     res.json(messages);
   } catch (error) {

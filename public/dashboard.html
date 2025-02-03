@@ -75,6 +75,15 @@
             background-color: #e9ecef;
         }
         
+        .contact-item small {
+            font-size: 0.75rem;
+        }
+        
+        .contact-item strong {
+            display: block;
+            margin-bottom: 2px;
+        }
+        
         .message-input {
             padding: 20px;
             border-top: 1px solid #dee2e6;
@@ -290,13 +299,27 @@
                 const contacts = await response.json();
                 
                 contactsList.innerHTML = '';
-                const uniqueContacts = [...new Set(contacts.map(c => c.phone_number))];
                 
-                uniqueContacts.forEach(phone => {
+                contacts.forEach(contact => {
                     const div = document.createElement('div');
-                    div.className = `contact-item ${selectedPhone === phone ? 'active' : ''}`;
-                    div.textContent = phone;
-                    div.onclick = () => selectContact(phone);
+                    div.className = `contact-item ${selectedPhone === contact.phone_number ? 'active' : ''}`;
+                    
+                    // Formatear la fecha del último mensaje
+                    const lastMessageDate = new Date(contact.last_message);
+                    const formattedDate = lastMessageDate.toLocaleDateString('es-ES', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: '2-digit'
+                    });
+                    
+                    div.innerHTML = `
+                        <div class="d-flex justify-content-between align-items-center">
+                            <strong>${contact.phone_number}</strong>
+                            <small class="text-muted">${formattedDate}</small>
+                        </div>
+                    `;
+                    
+                    div.onclick = () => selectContact(contact.phone_number);
                     contactsList.appendChild(div);
                 });
             } catch (error) {
